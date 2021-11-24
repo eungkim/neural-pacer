@@ -9,6 +9,8 @@ import torchvision.models as models
 from torch.autograd import Variable
 import numpy as np
 
+from models import ResNet32, Pacer
+
 
 #args
 parser = argparse.ArgumentParser(description='Pytorch Implementation of Neural Pacer Training')
@@ -21,16 +23,22 @@ args = parser.parse_args()
 torch.manual_seed(816)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+#build model
+def build_model():
+    model = ResNet32(args.dataset=='cifar10' and 10 or 100)
+
+    if torch.cuda.is_available():
+        model.cuda()
+        torch.backends.cudnn.benchmark = True
+    
+    return model
+
 #train
 def train(train_loader, train_meta_loader, model_name, optim_model, pacer, optim_pacer, epochs, lr, device):
-
     if model_name=="resnet32":
-        model = models.resnet32().to(device) #To edit, output representation and final out value
-        model_meta = models.resnet32()
-    elif model_name=="efficientnetb0":
-        model = models.efficientnet_b0()
-        model_meta = models.efficientnet_b0()
-    
+        model = build_model().cuda()
+        pacer = Pacer(1024, 1024, 1).cuda() #to edit, resnet representation size
+        
     for epoch in range(epochs):
         train_loss = 0
         meta_loss = 0
@@ -41,6 +49,8 @@ def train(train_loader, train_meta_loader, model_name, optim_model, pacer, optim
                 targets = targets.to(device)
                 inputs_meta = inputs_meta.to(device)
                 targets_meta = targets_meta.to(device)
+
+                model_meta = build_model().cuda()
                 model_meta.load_state_dict(model.state_dict())
 
                 #first training of model_meta
@@ -80,7 +90,7 @@ def train(train_loader, train_meta_loader, model_name, optim_model, pacer, optim
                 train_loss += loss.item()
                 meta_loss += loss_meta_1.item()
 
-                if (i + 1)%50==0:
+                if (i+1)%50==0:
                     print(f"Epoch: [{epoch}/{epochs}]\t Iters: [{i}]\t Loss: [{(train_loss/(i+1))}]\t MetaLoss: [{(meta_loss/(i+1))}]")
 
                     train_loss = 0

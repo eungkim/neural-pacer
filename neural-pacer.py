@@ -5,25 +5,26 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data
-import torchvision.models as models
 from torch.autograd import Variable
 import numpy as np
 
 from models import ResNet32, Pacer
 
 
-#args
+# args
 parser = argparse.ArgumentParser(description='Pytorch Implementation of Neural Pacer Training')
 parser.add_argument('--model', default="resnet", type=str)
 parser.add_argument('--batch_size', default=64, type=int)
 
 args = parser.parse_args()
 
-#torch settings
+# torch settings
 torch.manual_seed(816)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-#build model
+# modification of https://github.com/xjtushujun/meta-weight-net
+
+# build model
 def build_model():
     model = ResNet32(args.dataset=='cifar10' and 10 or 100)
 
@@ -33,17 +34,17 @@ def build_model():
     
     return model
 
-#train
+# train
 def train(train_loader, train_meta_loader, model_name, optim_model, pacer, optim_pacer, epochs, lr, device):
     if model_name=="resnet32":
         model = build_model().cuda()
-        pacer = Pacer(1024, 1024, 1).cuda() #to edit, resnet representation size
+        pacer = Pacer(1024, 1024, 1).cuda() # to edit, resnet representation size
         
     for epoch in range(epochs):
         train_loss = 0
         meta_loss = 0
         for i, ((inputs, targets), (inputs_meta, targets_meta)) in enumerate(zip(train_loader, train_meta_loader)):
-                #settings
+                # settings
                 model.train()
                 inputs = inputs.to(device)
                 targets = targets.to(device)
@@ -53,18 +54,18 @@ def train(train_loader, train_meta_loader, model_name, optim_model, pacer, optim
                 model_meta = build_model().cuda()
                 model_meta.load_state_dict(model.state_dict())
 
-                #first training of model_meta
+                # first training of model_meta
                 outputs, reps = model_meta(inputs)
 
                 cost = F.cross_entropy(outputs, targets, reduce=False)
-                v_lambda = pacer(reps)
+                v_lambda = pacer(reps.detach()) # gradient should not flow to model_meta by reps
                 loss_meta_0 = torch.sum(cost * v_lambda) / len(cost)
                 model_meta.zero_grad()
                 grads = torch.autograd.grad(loss_meta_0, (model_meta.params()), create_graph=True)
                 model_meta.update_params(lr_inner=lr, source_params=grads)
                 del grads
 
-                #training of pacer
+                # training of pacer
                 outputs_meta = model_meta(inputs_meta)            
                 loss_meta_1 = F.cross_entropy(outputs_meta, targets_meta)
                 
@@ -72,7 +73,7 @@ def train(train_loader, train_meta_loader, model_name, optim_model, pacer, optim
                 loss_meta_1.backward()
                 optim_pacer.step()
 
-                #training of model
+                # training of model
                 outputs, reps = model(inputs)
                 cost_model = F.cross_entropy(outputs, targets, reduce=False)
 
@@ -86,7 +87,7 @@ def train(train_loader, train_meta_loader, model_name, optim_model, pacer, optim
                 optim_model.step()
 
 
-                #print loss
+                # print loss
                 train_loss += loss.item()
                 meta_loss += loss_meta_1.item()
 

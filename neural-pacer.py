@@ -15,6 +15,9 @@ from models import ResNet32, Pacer
 parser = argparse.ArgumentParser(description='Pytorch Implementation of Neural Pacer Training')
 parser.add_argument('--model', default="resnet", type=str)
 parser.add_argument('--batch_size', default=64, type=int)
+parser.add_argument('--dataset', default="cifar10", type=str)
+parser.add_argument('--epochs', default=120, type=int)
+parser.add_argument('--lr', default=1e-3, type=int)
 
 args = parser.parse_args()
 
@@ -35,11 +38,7 @@ def build_model():
     return model
 
 # train
-def train(train_loader, train_meta_loader, model_name, optim_model, pacer, optim_pacer, epochs, lr, device):
-    if model_name=="resnet32":
-        model = build_model().cuda()
-        pacer = Pacer(1024, 1024, 1).cuda() # to edit, resnet representation size
-        
+def train(train_loader, train_meta_loader, model, optim_model, pacer, optim_pacer, epochs, lr, device):
     for epoch in range(epochs):
         train_loss = 0
         meta_loss = 0
@@ -96,3 +95,23 @@ def train(train_loader, train_meta_loader, model_name, optim_model, pacer, optim
 
                     train_loss = 0
                     meta_loss = 0
+
+
+model = build_model()
+pacer = Pacer(64, 64, 1).cuda() #to edit - representation size
+
+optim_model = torch.optim.SGD(model.params(), args.lr, momentum=0.9, weight_decay=1e-4)
+optim_pacer = torch.optim.Adam(pacer.params(), args.lr, weight_decay=1e-4)
+
+def main():
+    best_acc = 0
+    train(train_loader, train_meta_loader, model, optim_model, pacer, optim_pacer, args.epochs, args.lr, device)
+    test_acc = test(model=model, test_loader=test_loader)
+    if test_acc>=best_acc:
+        best_acc = test_acc
+    
+    print(f"test accuracy: {best_acc}")
+
+
+if __name__=="__main__":
+    main()

@@ -9,10 +9,12 @@ from torch.autograd import Variable
 import numpy as np
 
 from models import ResNet32, Pacer
+from dataset import build_dataset
 
 
 # args
 parser = argparse.ArgumentParser(description='Pytorch Implementation of Neural Pacer Training')
+parser.add_argument('--name_dataset', default='cifar10', type=str)
 parser.add_argument('--model', default="resnet", type=str)
 parser.add_argument('--batch_size', default=64, type=int)
 parser.add_argument('--dataset', default="cifar10", type=str)
@@ -96,7 +98,27 @@ def train(train_loader, train_meta_loader, model, optim_model, pacer, optim_pace
                     train_loss = 0
                     meta_loss = 0
 
+def test(model, test_loader):
+    model.eval()
+    correct = 0
+    test_loss = 0
 
+    with torch.no_grad():
+        for i, (inputs, targets) in enumerate(test_loader):
+            inputs, targets = inputs.to(device), targets.to(device)
+            outputs, _ = model(inputs)
+            test_loss+=F.cross_entropy(outputs, targets).item()
+            _, predicted = outputs.max(1)
+            correct+=predicted.eq(targets).sum().item()
+        
+        test_loss/=len(test_loader.dataset)
+        accuracy = 100. * correct / len(test_loader.dataset)
+
+        print(f"Test Avg Loss: {test_loss} Accuracy: {accuracy}")
+
+    return accuracy
+
+train_loader, train_meta_loader, test_loader = build_dataset(args.name_dataset)
 model = build_model()
 pacer = Pacer(64, 64, 1).cuda() #to edit - representation size
 
